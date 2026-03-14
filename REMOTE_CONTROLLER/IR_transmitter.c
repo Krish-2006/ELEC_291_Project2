@@ -120,7 +120,7 @@ char _c51_external_startup (void)
 	CKCON0|=0b_0001_0000; // Timer 2 uses the system clock
 	TMR2RL=(0x10000L-(SYSCLK/(2*TIMER_2_FREQ))); // Initialize reload value
 	TMR2=0xffff;   // Set to reload immediately
-	ET2=1;         // Enable Timer2 interrupts
+	ET2=0;         // DISABLE TIMER 2 INTERRUPTS IMMEDIATELY. WE WILL ENABLE IT LATER, ONCE THE IR SENSOR IS READY TO RECEIVE SIGNALS
 	TR2=1;         // Start Timer2 (TMR2CN is bit addressable)
 
 	// Initialize timer 3 for periodic interrupts
@@ -195,13 +195,14 @@ void Timer1_ISR (void) interrupt INTERRUPT_TIMER1
 	TMR1=0x10000L-(SYSCLK/(2*TIMER_1_FREQ));
 	TIMER_OUT_1=!TIMER_OUT_1;
 }
-
+/*
 void Timer2_ISR (void) interrupt INTERRUPT_TIMER2
 {
 	SFRPAGE=0x0;
 	TF2H = 0; // Clear Timer2 interrupt flag
 	TIMER_OUT_2=!TIMER_OUT_2;
 }
+*/ // NOT USED IN THIS CODE. polling th2 flag instead
 
 void Timer3_ISR (void) interrupt INTERRUPT_TIMER3
 {
@@ -274,28 +275,143 @@ void PCA_ISR (void) interrupt INTERRUPT_PCA0
 	CF=0;
 }
 
-void wait_cycles(unsigned int n)
+// INSTRUCTION FUNCTIONS
+// fwd = 1001
+// left = 0001;
+// right = 1000;
+// stop = 0;
+
+void wait_cycles(unsigned int n, unsigned char burst)
 {
     unsigned int count = 0;
+    
+    SFRPAGE = 0x00; 
+    
     while(count < n)
     {
-        // Wait for Timer 2 high-byte overflow flag (set at 38kHz rate)
-        while(!TF2H); 
+        // Wait here until Timer 2 sets the TF2H flag (bit 7 of TMR2CN0)
+        while(!(TMR2CN0 & 0x80)); //0x80 in binary is 1000 0000, so this checks if the TF2H flag is set
         
-        // Clear the flag manually so we can detect the next overflow
-        TF2H = 0; 
+        // Manually clear the TF2H flag so we can catch the next one
+        TMR2CN0 &= ~0x80;         
+        
+
+        if (burst == 1) 
+		{
+            TIMER_OUT_2 = !TIMER_OUT_2; // Toggle to create the 38kHz wave
+        } 
+		else 
+		{
+            TIMER_OUT_2 = 0;            // Force to 0V
+        }
         
         count++;
     }
 }
 
+// PERSONAL PROTOCOL
+
+// Generates a 500us gap of silence (500us / 13.16us = 38 half-cycles)
+void send_space(void) 
+{
+    wait_cycles(38, 0); 
+}
+
+// Header: 16 cycles of 38kHz (32 half-cycles), then a space
+void send_header(void) 
+{
+    wait_cycles(32, 1); 
+    send_space();       
+}
+
+// Logic '0': 8 cycles of 38kHz (16 half-cycles), then a space
+void send_zero(void) 
+{
+    wait_cycles(16, 1); 
+    send_space();       
+}
+
+// Logic '1': 32 cycles of 38kHz (64 half-cycles), then a space
+void send_one(void) 
+{
+    wait_cycles(64, 1); 
+    send_space();       
+}
+
+
+// Direction functions
+
+// Forward = 0x09 (Binary: 1 0 0 1)
+void send_forward(void) {
+    send_header(); // Always wake up the receiver first
+    send_one();    // 1
+    send_zero();   // 0
+    send_zero();   // 0
+    send_one();    // 1
+}
+
+// Turn Left = 0x01 (Binary: 0 0 0 1)
+void send_left(void) {
+    send_header(); 
+    send_zero();   // 0
+    send_zero();   // 0
+    send_zero();   // 0
+    send_one();    // 1
+}
+
+// Turn Right = 0x08 (Binary: 1 0 0 0)
+void send_right(void) {
+    send_header(); 
+    send_one();    // 1
+    send_zero();   // 0
+    send_zero();   // 0
+    send_zero();   // 0
+}
+
+// Stop = 0x00 (Binary: 0 0 0 0)
+void send_stop(void) {
+    send_header(); 
+    send_zero();   // 0
+    send_zero();   // 0
+    send_zero();   // 0
+    send_zero();   // 0
+}
+
+
 void main (void)
 {
-    unsigned int j;
+    _c51_external_startup();
+    
+    
 	while(1)
 	{
-	    // Everybody is interrupting, so it is imposible to obtain a perfect square wave
-		MAIN_OUT=!MAIN_OUT;
-		for (j=0; j<1000; j++);
+		send_stop();
+		
+		{
+			unsigned long delay;
+			for(delay = 0; delay < 900000; delay++); 
+		}
+
+		/*
+		if (button_forward)
+		{
+			send_foward;
+		}
+		else if (button_left)
+		{
+			send_left();
+		}
+		else if (button_right)
+		{
+			send_right();
+		}
+		else if (button_stop)
+		{
+			send_stop();
+		}
+		*/
+
 	}
+		
+    
 }
