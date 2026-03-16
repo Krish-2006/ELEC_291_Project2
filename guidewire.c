@@ -19,33 +19,32 @@ ADC:
 
 */
 
-#define LEFT_COIL_ADC_CHANNEL ADC_CHANNEL_0
-#define CENTER_COIL_ADC_CHANNEL ADC_CHANNEL_1
-#define RIGHT_COIL_ADC_CHANNEL ADC_CHANNEL_2
+#define LEFT_COIL_ADC_CHANNEL 0
+#define CENTER_COIL_ADC_CHANNEL 1
+#define RIGHT_COIL_ADC_CHANNEL 2
 
 #define GUIDE_THRESHOLD 50 // minimum sensor value used to distinguish the guide-wire signal from noise, determine later experimentally
 
+
 /* ADC READING FUNCTION */
 
-uint16_t read_adc(uint32_t channel)
+uint16_t read_adc(uint8_t channel)
 {
+    ADC1->CHSELR = (1 << channel);        // select ADC channel
 
-    ADC_ChannelConfTypeDef sConfig = {0};
-    
-    sConfig.Channel = channel;
-    sConfig.Rank = ADC_REGULAR_RANK_1;
-    sConfig.SamplingTime = ADC_SAMPLETIME_92CYCLES_5; // Adjust as needed for signal stability, determine experiemtnally
+    ADC1->CR |= ADC_CR_ADSTART;           // start conversion
 
-    HAL_ADC_ConfigChannel(&hadc1, &sConfig);
+    while(!(ADC1->ISR & ADC_ISR_EOC));    // wait until conversion finished
 
-    HAL_ADC_Start(&hadc1);
-    HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
-
-    return_value = HAL_ADC_GetValue(&hadc1);
-    HAL_ADC_Stop(&hadc1);
-    return return_value;
-
+    return ADC1->DR;                      // return ADC result
 }  
+
+  typedef enum {
+    GUIDE_LEFT,
+    GUIDE_CENTER,
+    GUIDE_RIGHT,
+    GUIDE_LOST
+    } guidestate;
 
 /* GUIDE WIRE SENSING FUNCTIONS */
 
@@ -67,40 +66,56 @@ int read_right_sensor(void)
 
 /* GUIDE WIRE CONTROL FUNCTIONS */
 
-void guidewire_follow(void)
+guidestate guidewire_follow(void)
 {
 
-    uint16_t left = read_left_sensor();
-    uint16_t center = read_center_sensor();
-    uint16_t right = read_right_sensor();
+    uint16_t left_value = read_left_sensor();
+    uint16_t center_value = read_center_sensor();
+    uint16_t right_value = read_right_sensor();
 
-    if (center > GUIDE_THRESHOLD && center >= left && center >= right) 
-    {
-        move_forward();
+    if (center_value > GUIDE_THRESHOLD && center_value >= left_value && center_value >= right_value) {
+        return GUIDE_CENTER; 
+
+
+    } else if (left_value > GUIDE_THRESHOLD && left_value > center_value && left_value > right_value) {
+        return GUIDE_LEFT; 
     } 
-    
-    else if (left > GUIDE_THRESHOLD && left > center) 
-    {
-        turn_left();
+
+    else if (right_value > GUIDE_THRESHOLD && right_value > center_value && right_value > left_value) {
+        return GUIDE_RIGHT; // Veering right
     } 
-    
-    else if (right > GUIDE_THRESHOLD && right > center) 
-    {
-        turn_right();
+
+    else {
+        return GUIDE_LOST; // Guide wire lost
     } 
-    
-    else 
-    {
-        stop_robot(); // Lost the line, stop or implement a search pattern
+}
+
+
+void guidewire_control(void)
+{
+    guidestate state = guidewire_follow();
+
+    switch (state) {
+        case GUIDE_CENTER:
+            move_forward();
+            break;
+        case GUIDE_LEFT:
+            turn_left();
+            break;
+        case GUIDE_RIGHT:
+            turn_right();
+            break;
+        case GUIDE_LOST:
+            stop_robot();
+            break;
     }
-       
 }
 
 int intersection_detection(void)
 {
-    int left = read_left_sensor();
-    int center = read_center_sensor();
-    int right = read_right_sensor();
+    uint16_t left = read_left_sensor();
+    uint16_t center = read_center_sensor();
+    uint16_t right = read_right_sensor();
 
     if(center > GUIDE_THRESHOLD && left > GUIDE_THRESHOLD && right > GUIDE_THRESHOLD)
     {
