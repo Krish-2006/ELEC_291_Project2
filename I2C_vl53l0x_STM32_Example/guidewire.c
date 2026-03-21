@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include "hardware.h"
 #include "ir_motor.h"
+#include "guidewire.h"
 
 /*
 Guidewire control module for a 3-inductor T layout:
@@ -14,18 +15,18 @@ without changing the existing headers first.
 ADC mapping used here:
 - PA2 -> ADC channel 2 -> left inductor
 - PA3 -> ADC channel 3 -> center inductor
-- PA4 -> ADC channel 4 -> right inductor
+- PA5 -> ADC channel 5 -> right inductor
 */
 
 #define GUIDEWIRE_LEFT_ADC_CHANNEL        2u
 #define GUIDEWIRE_CENTER_ADC_CHANNEL      3u
-#define GUIDEWIRE_RIGHT_ADC_CHANNEL       4u
+#define GUIDEWIRE_RIGHT_ADC_CHANNEL       5u
 
 #define GUIDEWIRE_CONFIGURE_ADC_GPIO      1u
 #define GUIDEWIRE_ADC_PORT                GPIOA
 #define GUIDEWIRE_LEFT_ADC_PIN            2u
 #define GUIDEWIRE_CENTER_ADC_PIN          3u
-#define GUIDEWIRE_RIGHT_ADC_PIN           4u
+#define GUIDEWIRE_RIGHT_ADC_PIN           5u
 
 #define GUIDEWIRE_SAMPLE_COUNT            8u
 #define GUIDEWIRE_TRACK_MIN_SIGNAL        120u
@@ -33,22 +34,6 @@ ADC mapping used here:
 #define GUIDEWIRE_TURN_MARGIN             140u
 #define GUIDEWIRE_INTERSECTION_MIN        260u
 #define GUIDEWIRE_INTERSECTION_MARGIN     90u
-
-typedef enum
-{
-    GUIDEWIRE_STATE_STOP = 0,
-    GUIDEWIRE_STATE_FORWARD,
-    GUIDEWIRE_STATE_LEFT,
-    GUIDEWIRE_STATE_RIGHT,
-    GUIDEWIRE_STATE_INTERSECTION
-} guidewire_state_t;
-
-typedef struct
-{
-    uint16_t left;
-    uint16_t center;
-    uint16_t right;
-} guidewire_readings_t;
 
 static bool guidewire_adc_ready = false;
 static guidewire_state_t guidewire_last_state = GUIDEWIRE_STATE_STOP;
