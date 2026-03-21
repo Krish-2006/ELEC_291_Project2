@@ -237,6 +237,27 @@ void send_stop(void) {
     send_header(); send_zero(); send_zero(); send_zero(); send_zero(); 
 }
 
+void load_main_menu_select(void)
+{
+    lcd_init();
+    lcd_set_cursor(0,0);
+    lcd_print("UP for auto         ");
+
+    lcd_set_cursor(1,0); 
+    lcd_print("DOWN for manual");
+}
+
+void load_path_select(void)
+{
+    lcd_init();
+
+    lcd_set_cursor(0,0);
+    lcd_print("Path 1   Path 2");
+
+    lcd_set_cursorR(1,0);
+    lcd_print("Path 3");
+}
+
 // ==========================================
 // ================= MAIN ===================
 // ==========================================
@@ -244,6 +265,8 @@ void main (void)
 {
     unsigned int vx_mv = 0;
     unsigned int vy_mv = 0;
+    int auto_mode;
+    int manual_mode;
 
     _c51_external_startup();
     
@@ -255,6 +278,29 @@ void main (void)
     
     // Boot directly into the RESET state
     current_state = RESET; 
+
+    // load into the main menu screen - select between auto and manual;
+
+    load_main_menu_select();
+
+    while (auto_mode != 1 || manual_mode != 1) // if none have been selecting, keep reading the voltage and wait
+    {
+        vx_mv = Millivolts_at_Pin(QFP32_MUX_P2_2)
+        if (vx_mv > 3200)
+        {
+            auto_mode = 1;
+        }
+        else if (vx_mv < 500)
+        {
+            manual_mode = 1;
+        }
+    }
+    if (auto_mode)
+    {
+        load_path_select();
+        
+    }
+
 
     while(1)
     {
