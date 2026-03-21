@@ -222,9 +222,9 @@
 #define RM2_PIN        14u  // PA14
 
 #define IR_CMD_STOP        0x0u
-#define IR_CMD_LEFT        0x1u
-#define IR_CMD_RIGHT       0x8u
-#define IR_CMD_FORWARD     0x9u
+#define IR_CMD_FORWARD     0x2u
+#define IR_CMD_LEFT        0x3u
+#define IR_CMD_RIGHT       0x4u
 
 #define PINMASK(pin) (1u << (pin))
 
@@ -978,7 +978,7 @@ int main(void)
     printf("TOF I2C: PB6=SCL, PB7=SDA\r\n");
     printf("LED1=PA0 (<100 mm), LED2=PA1 (>100 mm)\r\n");
     printf("Motors: PA11/PA12 left, PA13/PA14 right, IR=PA15\r\n");
-    printf("IR commands: STOP=0x0 LEFT=0x1 RIGHT=0x8 FORWARD=0x9\r\n");
+    printf("IR commands: STOP=0x0 FORWARD=0x2 LEFT=0x3 RIGHT=0x4\r\n");
     printf("File: %s\r\n", __FILE__);
     printf("Compiled: %s, %s\r\n\r\n", __DATE__, __TIME__);
     fflush(stdout);
@@ -1073,6 +1073,9 @@ int main(void)
 
         if (ir_new_data_flag != 0u)
         {
+            motor_stop();
+            waitms(5);
+
             last_ir_command = ir_command;
             ir_new_data_flag = 0u;
 
