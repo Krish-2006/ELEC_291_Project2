@@ -344,10 +344,10 @@ void send_one(void)
 // Forward = 0x09 (Binary: 1 0 0 1)
 void send_forward(void) {
     send_header(); // Always wake up the receiver first
-    send_one();    // 1
+    send_zero();    // 1
     send_zero();   // 0
-    send_zero();   // 0
-    send_one();    // 1
+    send_one();   // 0
+    send_zero();    // 1
 }
 
 // Turn Left = 0x01 (Binary: 0 0 0 1)
@@ -355,15 +355,15 @@ void send_left(void) {
     send_header(); 
     send_zero();   // 0
     send_zero();   // 0
-    send_zero();   // 0
+    send_one();   // 0
     send_one();    // 1
 }
 
 // Turn Right = 0x08 (Binary: 1 0 0 0)
 void send_right(void) {
     send_header(); 
-    send_one();    // 1
-    send_zero();   // 0
+    send_zero();    // 1
+    send_one();   // 0
     send_zero();   // 0
     send_zero();   // 0
 }
@@ -377,6 +377,14 @@ void send_stop(void) {
     send_zero();   // 0
 }
 
+void send_switch(void){
+	send_header();
+	send_zero();
+	send_one();
+	send_zero();
+	send_one();
+}
+
 
 void main (void)
 {
@@ -385,7 +393,7 @@ void main (void)
     
 	while(1)
 	{
-		send_stop();
+		send_forward();
 		
 		{
 			unsigned long delay;
