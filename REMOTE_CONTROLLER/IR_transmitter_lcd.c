@@ -8,6 +8,9 @@
 // --- JOYSTICK PINS ---
 #define JOYSTICK_VX  P2_1 
 #define JOYSTICK_VY  P2_2
+#define NRST		 P3_2
+#define VDD         3295 // millivolts
+#define GND         100  // millivolts
 
 // --- IR SENSOR PIN ---
 #define TIMER_2_FREQ 38000L // 38kHz for IR sensor
@@ -23,7 +26,7 @@
 #define LCD_D7 P1_7
 
 // ==========================================
-// ====== CUSTOM TYPES & GLOBAL VARIABLES ===
+// ====== CUSTOM TYPES & GLOBAL VARIABLES === not used in this code 
 // ==========================================
 typedef enum {
     RESET, // 0 
@@ -33,9 +36,6 @@ typedef enum {
 
 LCD_STATE_t current_state = RESET;
 
-// Thresholds in Millivolts
-int joystick_fwd    = 3000; // ~3.0V
-int joystick_bwd    = 500;  // ~0.5V
 
 // ==========================================
 // ======== HARDWARE INITIALIZATION =========
@@ -244,7 +244,7 @@ void load_main_menu_select(void)
     lcd_print("UP for auto         ");
 
     lcd_set_cursor(1,0); 
-    lcd_print("DOWN for manual");
+    lcd_print("DOWN for manual ");
 }
 
 void load_path_select(void)
@@ -252,10 +252,10 @@ void load_path_select(void)
     lcd_init();
 
     lcd_set_cursor(0,0);
-    lcd_print("Path 1   Path 2");
+    lcd_print("Path 1   Path 2 ");
 
-    lcd_set_cursorR(1,0);
-    lcd_print("Path 3");
+    lcd_set_cursor(1,0);
+    lcd_print("Path 3          ");
 }
 
 // ==========================================
@@ -263,54 +263,68 @@ void load_path_select(void)
 // ==========================================
 void main (void)
 {
-    unsigned int vx_mv = 0;
+    // initialization
+    unsigned int vx_mv = 0; // You need these variables back!
     unsigned int vy_mv = 0;
-    int auto_mode;
-    int manual_mode;
+
+    bit auto_mode   = 0;
+    bit manual_mode = 0;
 
     _c51_external_startup();
     
     lcd_init();
 
-    InitPinADC(2, 1); // P2.1 as Analog input for joystick X-axis
-    InitPinADC(2, 2); // P2.2 as Analog input for joystick Y-axis
+    InitPinADC(2, 1); 
+    InitPinADC(2, 2); 
     InitADC();
     
-    // Boot directly into the RESET state
-    current_state = RESET; 
+    // end of initilaization
+    
+    while(1)
+    {
+        vx_mv = Millivolts_at_Pin(QFP32_MUX_P2_1);
+        vy_mv = Millivolts_at_Pin(QFP32_MUX_P2_2);
 
-    // load into the main menu screen - select between auto and manual;
+        // 2. Compare the measured voltages!
+        if 		(vx_mv < 1650) send_forward();
+        else if (vx_mv > 1650) send_stop();
+        
+        if 		(vy_mv > 1650) send_left();
+        else if (vy_mv < 1650) send_right();
+        
+        lcd_delay_ms(50);
+    }
 
+    
+/*
+reset_label:
     load_main_menu_select();
 
-    while (auto_mode != 1 || manual_mode != 1) // if none have been selecting, keep reading the voltage and wait
+    while (auto_mode == 0 && manual_mode == 0) // if none have been selecting, keep reading the voltage and wait
     {
-        vx_mv = Millivolts_at_Pin(QFP32_MUX_P2_2)
-        if (vx_mv > 3200)
-        {
-            auto_mode = 1;
-        }
-        else if (vx_mv < 500)
-        {
-            manual_mode = 1;
-        }
+        vx_mv = Millivolts_at_Pin(QFP32_MUX_P2_2);
+        if      (vx_mv < VDD/2) auto_mode = 1;
+        else if (vx_mv > 1750)  manual_mode = 1;
     }
-    if (auto_mode)
-    {
-        load_path_select();
-        
-    }
+
+    // auto or manual mode has been selected
+
+    if (auto_mode) load_path_select();
+
+    if (vx_mv < VDD/2) // if UP (relative to the orientation of the remote)
 
 
     while(1)
     {
+        if (!NRST) goto reset_label;
+
         vx_mv = Millivolts_at_Pin(QFP32_MUX_P2_1); 
         vy_mv = Millivolts_at_Pin(QFP32_MUX_P2_2);
         
         if (vx_mv > 3000)
         {
             lcd_set_cursor(0,0);
-            lcd_print("going up    ");
+            lcd_print("going up     ");
         }
         else if (vx_mv < 500)
         {
@@ -323,79 +337,7 @@ void main (void)
             lcd_print("in the centre  ");
         }
 
-        // 2. State Machine
-        /*
-        switch(current_state)
-        {
-            case RESET:
-
-                lcd_set_cursor(0, 0);      
-                lcd_print("UP   for auto   ");
-                lcd_set_cursor(1, 0); 
-                lcd_print("DOWN for manual ");
+       */
                 
-                send_stop(); // Ensure robot is stopped while in menu
-
-                // Pushing UP enters AUTO
-                if (vx_mv > joystick_fwd) 
-                {
-                    current_state = AUTO;
-                    lcd_command(0x01); 
-                    lcd_delay_ms(200); 
-                }
-                // Pulling DOWN enters MANUAL
-                else if (vx_mv < joystick_bwd) 
-                {
-                    current_state = MANUAL;
-                    lcd_command(0x01);
-                    lcd_delay_ms(200);
-                }
-                break;
-
-            // ==========================================
-            case AUTO:
-            // ==========================================
-                lcd_set_cursor(0, 0);      
-                lcd_print("AUTO MODE       "); 
-                lcd_set_cursor(1, 0);      
-                lcd_print("Sending FWD...  "); 
-                
-                send_forward();
-
-                // "Dead Man's Switch": If voltage drops below FWD threshold 
-                // (meaning you let go of the stick), return to RESET!
-                if (vx_mv < joystick_fwd) 
-                {
-                    current_state = RESET;
-                    lcd_command(0x01);
-                    lcd_delay_ms(200);
-                }
-                break;
-
-            // ==========================================
-            case MANUAL:
-            // ==========================================
-                lcd_set_cursor(0, 0);      
-                lcd_print("MANUAL MODE     "); 
-                lcd_set_cursor(1, 0);      
-                lcd_print("Sending LEFT... "); 
-                
-                send_left();
-
-                // "Dead Man's Switch": If voltage rises above BWD threshold 
-                // (meaning you let go of the stick), return to RESET!
-                if (vx_mv > joystick_bwd) 
-                {
-                    current_state = RESET;
-                    lcd_command(0x01);
-                    lcd_delay_ms(200);
-                }
-                break;
-
-            default:
-                current_state = RESET;
-                break;
-        }             
-                */   
-    }
+    
 }
