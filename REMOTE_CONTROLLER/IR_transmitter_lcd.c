@@ -258,13 +258,17 @@ void load_path_select(void)
     lcd_print("Path 3          ");
 }
 
+void play_music(void)
+{
+}
+
 // ==========================================
 // ================= MAIN ===================
 // ==========================================
 void main (void)
 {
     // initialization
-    unsigned int vx_mv = 0; // You need these variables back!
+    unsigned int vx_mv = 0; 
     unsigned int vy_mv = 0;
 
     bit auto_mode   = 0;
@@ -278,22 +282,40 @@ void main (void)
     InitPinADC(2, 2); 
     InitADC();
     
-    // end of initilaization
+    // end of initialization
+    
+    // JOYSTICK ONLY TEST CODE
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     
     while(1)
     {
         vx_mv = Millivolts_at_Pin(QFP32_MUX_P2_1);
         vy_mv = Millivolts_at_Pin(QFP32_MUX_P2_2);
 
-        // 2. Compare the measured voltages!
-        if 		(vx_mv < 1650) send_forward();
-        else if (vx_mv > 1650) send_stop();
+        if 		(vx_mv < 200) send_forward();`
+        else if (vx_mv > 2800) send_stop();
         
-        if 		(vy_mv > 1650) send_left();
-        else if (vy_mv < 1650) send_right();
+        if 		(vy_mv > 2800) send_left();
+        else if (vy_mv < 200) send_right();
+        
+        else				  
         
         lcd_delay_ms(50);
     }
+    // END OF JOYSTICK ONLY TEST CODE
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /*
+
+    
+    while (1)
+    {
+    	if (!NRST) goto reset_label:
+    	
+    	if (!P3_1) run_path_1();
+    	if (!P3_0) run_path_2();
+    	if (!P2_6) run_path_3();
+    	if (!P3_7) play_music();
+    	*/
 
     
 /*
