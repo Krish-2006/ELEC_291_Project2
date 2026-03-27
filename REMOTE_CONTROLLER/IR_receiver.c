@@ -1,3 +1,8 @@
+//  Author: Krish Vashist
+//  Date: 2026-03-16
+//  Description: This file contains the fully TESTED IR receiver code
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include "../Common/Include/stm32l051xx.h"
@@ -83,6 +88,12 @@ void TIM2_Handler(void) {
         TIM2->SR &= ~BIT1; 
     }
 }
+
+    // BIT1 -> red -> pin 7 -> STOP -> 0000
+    // BIT2 -> yellow -> pin 8 -> left -> 0001
+    // BIT3 -> White -> pin 9 -> right -> 1000
+    // BIT4 -> Green -> pin 10 -> forward -> 1001 
+
 
 int main(void) {
     Hardware_Init();

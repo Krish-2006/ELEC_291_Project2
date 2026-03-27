@@ -5,6 +5,9 @@
     RM2 - right backward
 */
 
+
+
+
 volatile int* const MOTOR = (int *)0xFF200000; // Base address for motor
 
 #define LM1 0x01 // Bit 0
@@ -59,3 +62,5 @@ void move_backward() {
 void stop_robot() {
     stop_motors();
 }
+
+

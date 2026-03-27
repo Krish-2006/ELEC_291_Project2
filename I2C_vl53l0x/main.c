@@ -93,6 +93,9 @@ unsigned char i2c_read_addr8_data16(unsigned char address, unsigned int * value)
 	return 1;
 }
 
+
+
+
 unsigned char i2c_write_addr8_data8(unsigned char address, unsigned char value)
 {
 	I2C_start();
