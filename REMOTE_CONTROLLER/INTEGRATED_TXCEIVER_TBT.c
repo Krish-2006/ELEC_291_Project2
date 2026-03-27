@@ -369,31 +369,39 @@ void send_stop(void)    { send_header(); send_zero(); send_one();  send_zero(); 
 // ==========================================
 // ===== IR COMMAND HANDLER (TEMPLATE) ======
 // ==========================================
-// Called whenever a full 4-bit IR command is received on P0.4
-// Matches the bit patterns sent by this transmitter:
-//   send_forward → 0b0010
-//   send_left    → 0b0011
-//   send_right   → 0b0100
-//   send_stop    → 0b0101
+
 
 void handle_ir_command(unsigned char cmd)
 {
     switch (cmd)
     {
-        case 0b00000010: // FORWARD received
-            // TODO: react to forward confirmation
+        case 0b00001001: // CLOSE (1001)
+            // BEEP QUICKLY
+            lcd_command(0x01); 
+            lcd_delay_ms(5);
+            lcd_set_cursor(0,0);
+            lcd_print("CLOSE");
             break;
 
-        case 0b00000011: // LEFT received
-            // TODO: react to left confirmation
+        case 0b00001010 : // VERY CLOSE (1010)
+            lcd_command(0x01); 
+            lcd_delay_ms(5);
+            lcd_set_cursor(0,0);
+            lcd_print("VERY CLOSE");
             break;
 
-        case 0b00000100: // RIGHT received
-            // TODO: react to right confirmation
+        case 0b00001111: // MOTOR ON/OFF (1111)
+            lcd_command(0x01); 
+            lcd_delay_ms(5);
+            lcd_set_cursor(0,0);
+            lcd_print("MOTOR ON/OFF");
             break;
 
         case 0b00000101: // STOP received
-            // TODO: react to stop confirmation
+            lcd_command(0x01); 
+            lcd_delay_ms(5);
+            lcd_set_cursor(0,0);
+            lcd_print("0101 RECEIVED");
             break;
 
         default:
