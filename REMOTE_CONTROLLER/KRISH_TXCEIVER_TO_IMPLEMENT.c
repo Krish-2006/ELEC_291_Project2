@@ -9,16 +9,16 @@
 
 
 // PIN MAPPING (configure these to MODER register)
-// PA11 -> LM1 (Pin 13) - left motor forward
-// PA12 -> LM2 (Pin 18) - left motor backward
+// PA11 -> LM1 (Pin 21) - left motor forward
+// PA12 -> LM2 (Pin 22) - left motor backward
 // PA13 -> RM1 (Pin 23) - right motor forward
 // PA14 -> RM2 (Pin 24) - right motor backward
 // PA15 -> IR receiver input (Pin 25)
 
 
 // -- MOTOR PIN DEFINITIONS --
-#define LM1 BIT7  // THESE WERE CHANGED FROM 11,12,13,14 TO 7,8,13,14 (FLOATING PINS ON THE BOARD)
-#define LM2 BIT8
+#define LM1 BIT11
+#define LM2 BIT12
 #define RM1 BIT13
 #define RM2 BIT14
 
@@ -50,7 +50,7 @@ void Hardware_Init(void) {
     // Configure PA1-PA4 as LEDs (0x155) 
     // AND PA11-PA14 as Motor Outputs (0x5500000)
 
-    GPIOA->MODER = (GPIOA->MODER & ~0x3C03C3FF) | 0x14014155;
+    GPIOA->MODER = (GPIOA->MODER & ~0x3FF003FF) | 0x15500155;
 
 
     GPIOA->ODR &= ~(LM1 | LM2 | RM1 | RM2); // clear all motor bits to stop the car -> intially the car must be in stopped state
@@ -168,18 +168,10 @@ int main(void) {
                     GPIOA->ODR |= BIT4;  // LED 4 -> forward
                     GPIOA->ODR &= ~(BIT4);
                     break; 
-                case 0b1101: // BACKWARD
-                    GPIOA->ODR |= (LM2 | RM2); 
-                    break;
             }
             NewData_flag = 0; 
         }
 
-        // --- NON-BLOCKING TIMEOUT ---
-        // Simulates GTA V driving mechanic: when you let go of the button, the car stops.
-        // If 250 milliseconds have passed since the last IR command, we stop the motors.
-        // If your remote continuously sends codes when held, it will automatically stop 
-        // 250ms after you let go instead of continuous spinning!
         if (last_cmd_time != 0 && (msTicks - last_cmd_time > 250)) {
             GPIOA->ODR &= ~(LM1 | LM2 | RM1 | RM2); // Turn off all motors
             GPIOA->ODR &= ~(BIT4);  // Turn off LEDs
