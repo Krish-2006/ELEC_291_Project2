@@ -39,7 +39,7 @@
 // Input Pin Mapping
 #define BTN_LEFT    P0_2
 #define BTN_RIGHT   P0_5
-#define BTN_FWD     P3_7
+#define BTN_FWD     P3_3
 #define BTN_SWITCH  P3_2
 
 char _c51_external_startup (void)
