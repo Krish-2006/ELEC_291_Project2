@@ -7,6 +7,7 @@
 // PNP EMITTER AT 3V3 - P0.3 is ACTIVE LOW for buzzer
 // PASSIVE BUZZER (CEM1302) - uses tone toggling
 // IR RECEIVE ON P0.4 - Timer 0 free-run, Port Match ISR
+// HAPTIC MOTOR ON P0.2 - Active LOW via PNP
 
 #include <EFM8LB1.h>
 #include <stdlib.h>
@@ -21,12 +22,14 @@
 #define THRESH_LOW  1200
 #define THRESH_HIGH 1800
 
-// --- PINS ---
-#define NRST        P3_2
+// --- PINS --- // WARNING: P0.4, P0.5, and P3.7 are used by the boot loader.  A lot of care has to be taken if you want to use those pins.
+
+#define joy_button  P2_3
+#define NRST        P3_2    
 #define TIMER_OUT_2 P1_6
-#define SPEAKER_OUT P0_3
+#define SPEAKER_OUT P0_3 
 #define HAPTIC_OUT  P0_2
-#define IR_IN       P0_6    // IR receiver input
+#define IR_IN       P0_7    // IR receiver input
 #define LCD_RS P1_1
 #define LCD_E  P1_2
 #define LCD_D4 P1_3
@@ -34,30 +37,21 @@
 #define LCD_D6 P1_5
 #define LCD_D7 P1_7
 
-// ==========================================
-// ======= FORWARD DECLARATIONS =============
-// ==========================================
 void lcd_delay_ms(unsigned int ms);
 void lcd_delay_us(unsigned int us);
 
 // ==========================================
 // ======= IR RECEIVE STATE VARIABLES =======
 // ==========================================
-// Timer 0 runs at SYSCLK/12 = 6MHz → 1 tick = 0.167us
-// Pulse width thresholds (in ticks):
-//   Header burst  ~421us → ~2526 ticks → check 1800–3600
-//   Zero burst    ~210us → ~1260 ticks → check  600–2100
-//   One burst     ~842us → ~5052 ticks → check 3000–6600
-
 volatile unsigned int  ir_start_time = 0;
 volatile unsigned int  ir_width      = 0;
-volatile int           ir_state      = 0; // 0=IDLE, 1=RECEIVING
+volatile int           ir_state      = 0; 
 volatile int           ir_bit_count  = 0;
 volatile unsigned char ir_command    = 0;
 volatile bit           ir_new_data   = 0;
 
 // ==========================================
-// ========= BUZZER (PASSIVE CEM1302) =======
+// ====== BUZZER & HAPTIC FEEDBACK ==========
 // ==========================================
 void beep_tone(unsigned int ms)
 {
@@ -73,13 +67,23 @@ void beep_tone(unsigned int ms)
     SPEAKER_OUT = 1;
 }
 
-void beep_confirm(void) { beep_tone(20); }
+// Triggers on Menu Selections
+void beep_confirm(void) 
+{ 
+    HAPTIC_OUT = 0;   // Turn ON Haptic Motor
+    beep_tone(10);    // <-- SHORTER BEEP: 10ms for a quick snappy click
+    lcd_delay_ms(30); // Keep vibrating an extra 30ms for a solid "click" feel
+    HAPTIC_OUT = 1;   // Turn OFF Haptic Motor
+}
 
+// Triggers on Main System Reset
 void beep_reset(void)
 {
-    beep_tone(20);
-    lcd_delay_ms(40);
-    beep_tone(20);
+    HAPTIC_OUT = 0;   // Start vibrating
+    beep_tone(15);    // <-- SHORTER BEEP: 15ms chirp
+    lcd_delay_ms(40); // Pause beep, but keep vibrating
+    beep_tone(15);    // <-- SHORTER BEEP: 15ms chirp
+    HAPTIC_OUT = 1;   // Stop vibrating
 }
 
 // ==========================================
@@ -105,10 +109,15 @@ char _c51_external_startup (void)
 
     // Configure pins
     P1MDOUT |=  0b_1111_1111; // All P1 push-pull (LCD & IR TX)
+    
+    // P2.3 is Open Drain, P2 ADC open drain
+    P2MDOUT |=  0b_0000_0000; 
+    P2      |=  0b_0000_1000; // Enable internal pull-up on P2.3 (joy_button)
+
     P0MDOUT &= ~0b_0001_1000; // P0.3 open-drain (speaker), P0.4 open-drain (IR IN)
     P0MDOUT |=  0b_0000_0100; // P0.2 push-pull (haptic)
     P0      |=  0b_0001_1000; // Write 1 to P0.3 and P0.4 for input/pull-up
-    P2MDOUT |=  0b_0000_0000; // P2 open-drain (ADC)
+    
     P3MDOUT |=  0b_0000_0000; // P3.2 open-drain = input
     P3      |=  0b_0000_0100; // Enable internal pull-up on P3.2
     
@@ -117,17 +126,16 @@ char _c51_external_startup (void)
     XBR2 = 0x40; // Enable crossbar
     
     SPEAKER_OUT = 1; // Buzzer OFF at startup
-    HAPTIC_OUT  = 0;
+    HAPTIC_OUT  = 1; // Haptic OFF at startup (PNP Active-Low)
 
     // ---- Timer 0: Free-running 16-bit counter for IR capture ----
-    // SYSCLK/12 = 6MHz, 1 tick = 0.167us — completely independent of Timer 2
-    TMOD   &= 0xF0;  // Clear Timer 0 mode bits
-    TMOD   |= 0x01;  // Timer 0: Mode 1 (16-bit)
-    CKCON0 &= ~0x04; // Timer 0 uses SYSCLK/12
+    TMOD   &= 0xF0;  
+    TMOD   |= 0x01;  
+    CKCON0 &= ~0x04; 
     TH0 = 0x00;
     TL0 = 0x00;
-    ET0 = 0;         // No Timer 0 overflow interrupt needed
-    TR0 = 1;         // Start Timer 0
+    ET0 = 0;         
+    TR0 = 1;         
 
     // ---- Timer 2: 38kHz IR TX carrier (UNTOUCHED) ----
     TMR2CN0 = 0x00;   
@@ -145,12 +153,9 @@ char _c51_external_startup (void)
 // ==========================================
 void InitIR_Capture(void)
 {
-    // P0.4 already set as open-drain input in _c51_external_startup
-    // Set up Port Match to watch P0.4
     P0MASK = 0b_0001_0000; // Monitor P0.4 only
-    P0MAT  = 0b_0001_0000; // Expect HIGH (idle: no IR = receiver output HIGH)
+    P0MAT  = 0b_0001_0000; // Expect HIGH (idle)
 
-    // Enable Port Match interrupt (EMAT bit in EIE1)
     EIE1  |= 0x02;
     EA     = 1; // Global interrupt enable
 }
@@ -158,38 +163,27 @@ void InitIR_Capture(void)
 // ==========================================
 // ========= PORT MATCH ISR (P0.4) ==========
 // ==========================================
-// Fires on every edge of P0.4 (IR receiver output)
-// IR receiver: HIGH = no signal, LOW = 38kHz burst detected
-//
-// Falling edge → burst started  → record start time
-// Rising edge  → burst ended    → measure width → decode bit
-
 void PortMatch_ISR(void) interrupt 8
 {
     unsigned int current_time;
     unsigned char tl, th;
 
-    // Read Timer 0 (atomic 16-bit read)
     tl = TL0;
     th = TH0;
     current_time = ((unsigned int)th << 8) | tl;
 
     if (!(P0 & 0b_0001_0000))
     {
-        // --- FALLING EDGE: burst started ---
         ir_start_time = current_time;
-        P0MAT &= ~0b_0001_0000; // Now expect LOW → catch rising edge next
+        P0MAT &= ~0b_0001_0000; 
     }
     else
     {
-        // --- RISING EDGE: burst ended ---
         ir_width = current_time - ir_start_time;
-        P0MAT |= 0b_0001_0000;  // Now expect HIGH → catch falling edge next
+        P0MAT |= 0b_0001_0000;  
 
-        // --- DECODE ---
         if (ir_width > 1800 && ir_width < 3600)
         {
-            // Header detected (~421us burst)
             ir_state     = 1;
             ir_bit_count = 0;
             ir_command   = 0;
@@ -198,24 +192,22 @@ void PortMatch_ISR(void) interrupt 8
         {
             if (ir_width > 600 && ir_width < 2100)
             {
-                // Zero bit (~210us burst)
                 ir_command = (ir_command << 1);
                 ir_bit_count++;
             }
             else if (ir_width > 3000 && ir_width < 6600)
             {
-                // One bit (~842us burst)
                 ir_command = (ir_command << 1) | 1;
                 ir_bit_count++;
             }
             else
             {
-                ir_state = 0; // Invalid width, reset and wait for next header
+                ir_state = 0; 
             }
 
             if (ir_bit_count == 4)
             {
-                ir_new_data = 1; // Signal main loop
+                ir_new_data = 1; 
                 ir_state    = 0;
             }
         }
@@ -354,58 +346,62 @@ void wait_cycles(unsigned int n, unsigned char burst)
         count++;
     }
 }
+// SENDING BITS
 
-void delay_led_visible(void) { wait_cycles(15200, 0); }
 void send_space(void)        { wait_cycles(38, 0); }
 void send_header(void)       { wait_cycles(32, 1); send_space(); }
 void send_zero(void)         { wait_cycles(16, 1); send_space(); }
 void send_one(void)          { wait_cycles(64, 1); send_space(); }
 
-void send_left(void)    { send_header(); send_zero(); send_zero(); send_one();  send_one();  delay_led_visible(); }
-void send_right(void)   { send_header(); send_zero(); send_one();  send_zero(); send_zero(); delay_led_visible(); }
-void send_forward(void) { send_header(); send_zero(); send_zero(); send_one();  send_zero(); delay_led_visible(); }
-void send_stop(void)    { send_header(); send_zero(); send_one();  send_zero(); send_one();  delay_led_visible(); }
+// MOVEMENT
+void send_left(void)        { send_header(); send_zero(); send_zero(); send_one();  send_one();  } // 0011
+void send_right(void)       { send_header(); send_zero(); send_one();  send_zero(); send_zero(); } // 0100
+void send_forward(void)     { send_header(); send_zero(); send_zero(); send_zero(); send_one();  } // 0001
+void send_stop(void)        { send_header(); send_zero(); send_zero(); send_zero(); send_zero(); } // 0000
+void send_backward(void)    { send_header(); send_zero(); send_zero(); send_one();  send_zero(); } // 0010
+void send_180(void)         { send_header(); send_one();  send_one();  send_zero(); send_zero(); } // 1100
+
+// NEW PATHS
+void send_path_1(void)      { send_header(); send_zero(); send_one();  send_one();  send_zero(); } // 0110
+void send_path_2(void)      { send_header(); send_zero(); send_one();  send_one();  send_one();  } // 0111
+void send_path_3(void)      { send_header(); send_one();  send_zero(); send_zero(); send_zero(); } // 1000
 
 // ==========================================
 // ===== IR COMMAND HANDLER (TEMPLATE) ======
 // ==========================================
-
-
 void handle_ir_command(unsigned char cmd)
 {
     switch (cmd)
     {
-        case 0b00001001: // CLOSE (1001)
-            // BEEP QUICKLY
+        case 0b00000001: // FWD
             lcd_command(0x01); 
             lcd_delay_ms(5);
             lcd_set_cursor(0,0);
-            lcd_print("1001 received");
+            lcd_print("FWD received");
             break;
 
-        case 0b00001010 : // VERY CLOSE (1010)
+        case 0b00000110: // PATH 1
             lcd_command(0x01); 
             lcd_delay_ms(5);
             lcd_set_cursor(0,0);
-            lcd_print("1010 received");
+            lcd_print("Path 1 rcvd");
             break;
 
-        case 0b00001111: // MOTOR ON/OFF (1111)
+        case 0b00000111: // PATH 2
             lcd_command(0x01); 
             lcd_delay_ms(5);
             lcd_set_cursor(0,0);
-            lcd_print("1111 received");
+            lcd_print("Path 2 rcvd");
             break;
-
-        case 0b00000101: // STOP received
+            
+        case 0b00001000: // PATH 3
             lcd_command(0x01); 
             lcd_delay_ms(5);
             lcd_set_cursor(0,0);
-            lcd_print("0101 received");
+            lcd_print("Path 3 rcvd");
             break;
 
         default:
-            // default 
             break;
     }
 }
@@ -445,8 +441,10 @@ void main(void)
 {
     unsigned int vx_mv = 0; 
     unsigned int vy_mv = 0;
-    bit auto_mode   = 0;
-    bit manual_mode = 0;
+
+    bit auto_mode      = 0;
+    bit manual_mode    = 0;
+    
     int selected_path = 1;
 
     _c51_external_startup();
@@ -468,8 +466,9 @@ reset_label:
 
     beep_reset();
 
-    auto_mode   = 0;
-    manual_mode = 0;
+    auto_mode      = 0;
+    manual_mode    = 0;
+
     load_main_menu_select();
 
     while (auto_mode == 0 && manual_mode == 0) 
@@ -517,9 +516,12 @@ reset_label:
                 lcd_command(0x01); lcd_delay_ms(5);
                 lcd_set_cursor(0,0); lcd_print("Running Auto...");
                 lcd_set_cursor(1,0);
-                if (selected_path == 1) lcd_print("Path 1 Selected");
-                if (selected_path == 2) lcd_print("Path 2 Selected");
-                if (selected_path == 3) lcd_print("Path 3 Selected");
+                
+                // SEND THE PATH COMMAND HERE
+                if (selected_path == 1) { lcd_print("Path 1 Selected"); send_path_1(); send_path_1();}
+                if (selected_path == 2) { lcd_print("Path 2 Selected"); send_path_2(); send_path_2();} 
+                if (selected_path == 3) { lcd_print("Path 3 Selected"); send_path_3(); send_path_3();} 
+                
                 lcd_delay_ms(1500); 
                 break;
             }
@@ -527,14 +529,13 @@ reset_label:
             if (!NRST) goto reset_label;
         }
 
-        // --- AUTO MODE IR TRANSMISSION ---
+        // ROBOT SENDING INFORMATION SIDE
         while (1) {
             // Check for any received IR commands
             if (ir_new_data) {
                 ir_new_data = 0;
                 handle_ir_command(ir_command);
             }
-            // TODO: path-specific IR send sequences
             if (!NRST) goto reset_label;
         }
     }
@@ -557,39 +558,41 @@ reset_label:
                 handle_ir_command(ir_command);
             }
 
-
             vx_mv = Millivolts_at_Pin(QFP32_MUX_P2_1); 
             vy_mv = Millivolts_at_Pin(QFP32_MUX_P2_2);
             
-            if (vx_mv < THRESH_LOW)
+            // --- JOYSTICK BUTTON TRIGGER ADDED HERE ---
+            if (joy_button == 0)
+            {
+               lcd_set_cursor(1,0); lcd_print("Sending 180...  ");
+               send_180();
+            }
+            else if (vx_mv < THRESH_LOW)
             {
                lcd_set_cursor(1,0); lcd_print("Sending FWD...  ");
                send_forward();
-               
-         
             }
             else if (vx_mv > THRESH_HIGH)
             {
-               // lcd_set_cursor(1,0); lcd_print("Sending BWD...  ");
-                // send_backward(); // TODO
+               lcd_set_cursor(1,0); lcd_print("Sending BWD...  ");
+               send_backward(); 
             }
             else if (vy_mv < THRESH_LOW)
             {
-              //  lcd_set_cursor(1,0); lcd_print("Sending RIGHT...");
-              //  send_right();
+               lcd_set_cursor(1,0); lcd_print("Sending RIGHT...");
+               send_right();
             }
             else if (vy_mv > THRESH_HIGH)
             {
-               // lcd_set_cursor(1,0); lcd_print("Sending LEFT... ");
-                //send_left();
+               lcd_set_cursor(1,0); lcd_print("Sending LEFT... ");
+               send_left();
             }
             else
             {
-               // lcd_set_cursor(1,0); lcd_print("Stopped         ");
-               // send_stop();
+               lcd_set_cursor(1,0); lcd_print("Stopped         ");
+               send_stop();
             }
             
-            lcd_delay_ms(50);
         }
     }
 }
